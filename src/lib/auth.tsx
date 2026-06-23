@@ -127,29 +127,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async (event, session) => {
         if (!mounted) return;
 
-        if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
+        // Only handle TOKEN_REFRESHED to avoid race with signIn/signUp functions
+        if (event === 'TOKEN_REFRESHED' && session?.user) {
           const profile = await fetchUserProfile(session.user.id);
-
-          if (profile) {
+          if (mounted && profile) {
             setState({
               user: profile,
               loading: false,
               error: null,
             });
-          } else {
-            await supabase.auth.signOut();
+          }
+        } else if (event === 'SIGNED_OUT') {
+          if (mounted) {
             setState({
               user: null,
               loading: false,
-              error: 'Account profile not found.',
+              error: null,
             });
           }
-        } else if (event === 'SIGNED_OUT') {
-          setState({
-            user: null,
-            loading: false,
-            error: null,
-          });
         }
       }
     );
@@ -176,9 +171,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (data.user) {
-        // Wait for trigger to create profile
-        await new Promise(resolve => setTimeout(resolve, 500));
-
         let profile = await fetchUserProfile(data.user.id);
 
         if (profile) {
@@ -190,13 +182,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return { error: null };
         } else {
           await supabase.auth.signOut();
-          const message = 'Account exists but profile not found. Please try signing up again with the same email.';
           setState({
             user: null,
             loading: false,
-            error: message,
+            error: 'Account profile not found. Please contact support.',
           });
-          return { error: message };
+          return { error: 'Account profile not found' };
         }
       }
 
@@ -248,17 +239,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // User is immediately signed in (email confirmation disabled)
       if (data.user && data.session) {
-        // Wait for trigger to create profile
-        await new Promise(resolve => setTimeout(resolve, 1000));
-
-        let profile = await fetchUserProfile(data.user.id);
-
-        // If profile still doesn't exist after trigger, try manual creation
-        if (!profile) {
-          // Wait a bit more
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          profile = await fetchUserProfile(data.user.id);
-        }
+        const profile = await fetchUserProfile(data.user.id);
 
         if (profile) {
           setState({
